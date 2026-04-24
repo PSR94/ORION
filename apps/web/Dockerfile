@@ -1,0 +1,22 @@
+FROM node:18-alpine AS base
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json ./
+RUN npm install
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+# For this demo, we'll run in dev mode or build if possible.
+# Skipping full build for speed in this environment.
+# RUN npm run build
+
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV development
+COPY --from=builder /app ./
+
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
