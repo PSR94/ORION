@@ -8,6 +8,7 @@ import structlog
 
 from apps.api.models.models import WorkflowRun, ExecutionTrace, RunStatus, RiskLevel, Approval
 from apps.api.services.mock_provider import mock_llm
+from apps.api.services.security import sanitizer
 
 logger = structlog.get_logger()
 
@@ -80,7 +81,7 @@ class Orchestrator:
             run_id=run_id,
             step_name=name,
             step_type=type,
-            input=input,
+            input=sanitizer.sanitize(input),
             timestamp=datetime.utcnow()
         )
         session.add(trace)
@@ -94,7 +95,7 @@ class Orchestrator:
         )
         trace = result.scalars().first()
         if trace:
-            trace.output = output
+            trace.output = sanitizer.sanitize(output)
             session.add(trace)
             await session.commit()
 
