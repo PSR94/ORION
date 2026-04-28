@@ -37,6 +37,7 @@ class Tool(SQLModel, table=True):
     parameters: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
     permissions: List[str] = Field(default=[], sa_column=Column(JSON))
     requires_approval: bool = False
+    mask_pii: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Workflow(SQLModel, table=True):
