@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { 
   ArrowLeft, 
   Bot, 
@@ -14,34 +15,51 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import api from "../../../lib/api";
 
-const mockTraces = [
-  {
-    type: "llm",
-    name: "Intent Analysis",
-    content: "The user is reporting a recurring billing error. I should investigate the payment history and then escalate to a human supervisor for a refund authorization.",
-    thought: "Analyzing sentiment... Frustration detected. High priority workflow triggered.",
-    latency: "842ms",
-    tokens: 452
-  },
-  {
-    type: "tool",
-    name: "query_billing_history",
-    input: { customer_id: "cust_8821", limit: 5 },
-    output: { status: "success", records: [ { id: "inv_1", amount: "$99.00", date: "2024-03-01" } ] },
-    latency: "321ms"
-  },
-  {
-    type: "approval",
-    name: "escalate_to_human",
-    context: { reason: "Billing discrepancy detected, user requested supervisor.", priority: "high" },
-    status: "pending",
-    latency: "N/A"
-  }
-];
+interface Trace {
+  id: string;
+  step_type: string;
+  step_name: string;
+  input: any;
+  output: any;
+  latency_ms: number;
+  token_usage: any;
+}
+
+interface RunDetails {
+  id: string;
+  status: string;
+  risk_level: string;
+  agent_id: string;
+}
 
 export default function TraceViewer() {
   const { id } = useParams();
+  const [traces, setTraces] = useState<Trace[]>([]);
+  const [run, setRun] = useState<RunDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [runRes, tracesRes] = await Promise.all([
+          api.get(`/runs/${id}`),
+          api.get(`/runs/${id}/traces`)
+        ]);
+        setRun(runRes.data);
+        setTraces(tracesRes.data);
+      } catch (error) {
+        console.error("Failed to fetch run details", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (id) fetchData();
+  }, [id]);
+
+  if (loading) return <div className="p-8 text-center text-muted-foreground">Loading trace data...</div>;
+  if (!run) return <div className="p-8 text-center text-red-500">Run not found.</div>;
 
   return (
     <div className="space-y-6">
@@ -52,8 +70,9 @@ export default function TraceViewer() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Run Details</h2>
           <p className="text-muted-foreground mt-1 flex items-center gap-2">
-            <span className="font-mono text-xs bg-white/5 px-2 py-0.5 rounded border border-white/10">{id}</span>
-            <span className="text-[10px] uppercase tracking-widest font-bold text-amber-500">• Paused for Approval</span>
+            <span className="font-mono text-xs bg-white/5 px-2 py-0.5 rounded border border-white/10">{run.id.substring(0,8)}...</span>
+            {run.status === "paused" && <span className="text-[10px] uppercase tracking-widest font-bold text-amber-500">• Paused for Approval</span>}
+            {run.status === "completed" && <span className="text-[10px] uppercase tracking-widest font-bold text-green-500">• Completed</span>}
           </p>
         </div>
       </div>
@@ -61,70 +80,52 @@ export default function TraceViewer() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           <div className="space-y-4">
-            {mockTraces.map((trace, index) => (
-              <div key={index} className="glass-panel overflow-hidden">
+            {traces.length === 0 ? (
+               <div className="p-8 text-center text-muted-foreground border border-white/10 rounded-lg">No traces recorded yet.</div>
+            ) : traces.map((trace) => (
+              <div key={trace.id} className="glass-panel overflow-hidden">
                 <div className="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {trace.type === "llm" && <Bot className="w-5 h-5 text-purple-500" />}
-                    {trace.type === "tool" && <Wrench className="w-5 h-5 text-blue-500" />}
-                    {trace.type === "approval" && <ShieldCheck className="w-5 h-5 text-amber-500" />}
-                    <span className="font-bold text-sm uppercase tracking-wide">{trace.name}</span>
+                    {trace.step_type === "llm" && <Bot className="w-5 h-5 text-purple-500" />}
+                    {trace.step_type === "tool" && <Wrench className="w-5 h-5 text-blue-500" />}
+                    {trace.step_type === "approval" && <ShieldCheck className="w-5 h-5 text-amber-500" />}
+                    <span className="font-bold text-sm uppercase tracking-wide">{trace.step_name}</span>
                   </div>
                   <div className="flex items-center gap-4 text-[10px] text-muted-foreground uppercase font-bold tracking-widest">
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {trace.latency}</span>
-                    {trace.tokens && <span className="flex items-center gap-1"><Zap className="w-3 h-3" /> {trace.tokens} tokens</span>}
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {trace.latency_ms}ms</span>
                   </div>
                 </div>
                 
                 <div className="p-4 space-y-4">
-                  {trace.type === "llm" && (
-                    <>
-                      <div className="bg-purple-500/5 border border-purple-500/10 rounded p-3">
-                        <p className="text-[10px] text-purple-400 font-bold uppercase tracking-tighter mb-1 flex items-center gap-1">
-                          <Terminal className="w-3 h-3" /> Chain of Thought
-                        </p>
-                        <p className="text-sm italic text-muted-foreground">{trace.thought}</p>
-                      </div>
-                      <p className="text-sm text-foreground">{trace.content}</p>
-                    </>
-                  )}
-
-                  {trace.type === "tool" && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase">Input</p>
-                        <pre className="bg-black/40 p-2 rounded text-[10px] font-mono border border-white/5">
-                          {JSON.stringify(trace.input, null, 2)}
-                        </pre>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-[10px] text-muted-foreground font-bold uppercase">Output</p>
-                        <pre className="bg-black/40 p-2 rounded text-[10px] font-mono border border-white/5">
-                          {JSON.stringify(trace.output, null, 2)}
-                        </pre>
-                      </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-muted-foreground font-bold uppercase">Input</p>
+                      <pre className="bg-black/40 p-2 rounded text-[10px] font-mono border border-white/5 overflow-auto max-h-48">
+                        {JSON.stringify(trace.input, null, 2)}
+                      </pre>
                     </div>
-                  )}
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-muted-foreground font-bold uppercase">Output</p>
+                      <pre className="bg-black/40 p-2 rounded text-[10px] font-mono border border-white/5 overflow-auto max-h-48">
+                        {trace.output ? JSON.stringify(trace.output, null, 2) : "// Pending or None"}
+                      </pre>
+                    </div>
+                  </div>
 
-                  {trace.type === "approval" && (
-                    <div className="flex items-center justify-between p-4 bg-amber-500/5 border border-amber-500/10 rounded-lg">
+                  {trace.step_type === "approval" && (
+                    <div className="flex items-center justify-between p-4 bg-amber-500/5 border border-amber-500/10 rounded-lg mt-4">
                       <div className="flex gap-4">
                         <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center border border-amber-500/30">
                           <AlertTriangle className="w-5 h-5 text-amber-500" />
                         </div>
                         <div>
                           <p className="text-sm font-bold">Human-in-the-Loop Required</p>
-                          <p className="text-xs text-muted-foreground mt-1">This tool has been flagged for sensitive data access.</p>
+                          <p className="text-xs text-muted-foreground mt-1">Check Approval Inbox to decide.</p>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button className="px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg text-xs font-bold transition-colors">
-                          Reject
-                        </button>
-                        <button className="px-4 py-2 bg-green-500 text-white hover:bg-green-600 rounded-lg text-xs font-bold transition-colors shadow-[0_0_15px_rgba(34,197,94,0.3)]">
-                          Approve
-                        </button>
-                      </div>
+                      <Link href="/approvals" className="px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold transition-colors">
+                        Go to Inbox
+                      </Link>
                     </div>
                   )}
                 </div>
@@ -138,23 +139,12 @@ export default function TraceViewer() {
             <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground mb-4">Run Metadata</h3>
             <div className="space-y-4">
               <div className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-xs text-muted-foreground">Agent</span>
-                <span className="text-xs font-medium">Support-Escalator (v1.0.2)</span>
+                <span className="text-xs text-muted-foreground">Agent ID</span>
+                <span className="text-xs font-medium">{run.agent_id.substring(0,8)}...</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-xs text-muted-foreground">Workflow</span>
-                <span className="text-xs font-medium">Triage & Escalation</span>
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-xs text-muted-foreground">Provider</span>
-                <span className="text-xs font-medium flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                  Mock-GPT4
-                </span>
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-white/5">
-                <span className="text-xs text-muted-foreground">Cost Estim.</span>
-                <span className="text-xs font-medium text-green-400">$0.0012</span>
+                <span className="text-xs text-muted-foreground">Status</span>
+                <span className="text-xs font-medium uppercase">{run.status}</span>
               </div>
             </div>
           </div>
@@ -165,20 +155,11 @@ export default function TraceViewer() {
             </h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Tool Risk</span>
-                <span className="text-amber-500 font-bold">Medium</span>
+                <span className="text-muted-foreground">Detected Risk</span>
+                <span className={`font-bold ${run.risk_level === 'critical' ? 'text-red-500' : run.risk_level === 'high' ? 'text-amber-500' : 'text-green-500'}`}>
+                  {run.risk_level.toUpperCase()}
+                </span>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Data Privacy</span>
-                <span className="text-red-500 font-bold">High</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Compliance</span>
-                <span className="text-green-500 font-bold">Passed</span>
-              </div>
-            </div>
-            <div className="mt-6 pt-4 border-t border-white/5 text-[10px] text-muted-foreground leading-relaxed">
-              Execution contains a call to 'query_billing_history' which involves PII. Ensure data masking is active.
             </div>
           </div>
         </div>

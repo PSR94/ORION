@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { 
   Activity, 
   CheckCircle2, 
@@ -19,13 +20,7 @@ import {
   AreaChart,
   Area
 } from "recharts";
-
-const stats = [
-  { name: "Active Runs", value: "12", icon: Activity, color: "text-blue-500" },
-  { name: "Success Rate", value: "99.4%", icon: CheckCircle2, color: "text-green-500" },
-  { name: "Approvals Pending", value: "3", icon: ShieldAlert, color: "text-amber-500" },
-  { name: "Avg. Latency", value: "1.2s", icon: Clock, color: "text-purple-500" },
-];
+import api from "../lib/api";
 
 const chartData = [
   { name: "Mon", runs: 400, errors: 24 },
@@ -38,6 +33,47 @@ const chartData = [
 ];
 
 export default function Dashboard() {
+  const [stats, setStats] = useState([
+    { name: "Active Runs", value: "0", icon: Activity, color: "text-blue-500" },
+    { name: "Success Rate", value: "0%", icon: CheckCircle2, color: "text-green-500" },
+    { name: "Approvals Pending", value: "0", icon: ShieldAlert, color: "text-amber-500" },
+    { name: "Avg. Latency", value: "0s", icon: Clock, color: "text-purple-500" },
+  ]);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const [runsRes, approvalsRes] = await Promise.all([
+          api.get('/runs'),
+          api.get('/approvals')
+        ]);
+        
+        const runs = runsRes.data;
+        const approvals = approvalsRes.data;
+
+        const activeRuns = runs.filter((r: any) => r.status === 'running').length;
+        const completedRuns = runs.filter((r: any) => r.status === 'completed').length;
+        const failedRuns = runs.filter((r: any) => r.status === 'failed' || r.status === 'cancelled').length;
+        
+        let successRate = 100;
+        if (completedRuns + failedRuns > 0) {
+          successRate = (completedRuns / (completedRuns + failedRuns)) * 100;
+        }
+
+        setStats([
+          { name: "Active Runs", value: activeRuns.toString(), icon: Activity, color: "text-blue-500" },
+          { name: "Success Rate", value: `${successRate.toFixed(1)}%`, icon: CheckCircle2, color: "text-green-500" },
+          { name: "Approvals Pending", value: approvals.length.toString(), icon: ShieldAlert, color: "text-amber-500" },
+          { name: "Avg. Latency", value: "1.2s", icon: Clock, color: "text-purple-500" }, // Simulated for demo
+        ]);
+      } catch (error) {
+        console.error("Failed to fetch dashboard data", error);
+      }
+    };
+    
+    fetchDashboardData();
+  }, []);
+
   return (
     <div className="space-y-8">
       <div>

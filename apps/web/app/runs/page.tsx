@@ -5,7 +5,6 @@ import {
   Play, 
   Search, 
   Filter, 
-  MoreHorizontal, 
   CheckCircle2, 
   XCircle, 
   Clock, 
@@ -13,60 +12,51 @@ import {
   ExternalLink
 } from "lucide-react";
 import Link from "next/link";
-
-const mockRuns = [
-  {
-    id: "run-9281",
-    agent: "Support-Escalator",
-    workflow: "Customer Issue Triage",
-    status: "completed",
-    started_at: "2 mins ago",
-    duration: "12.4s",
-    risk: "low"
-  },
-  {
-    id: "run-9280",
-    agent: "Release-Commander",
-    workflow: "Canary Deployment Check",
-    status: "paused",
-    started_at: "15 mins ago",
-    duration: "45.1s",
-    risk: "high"
-  },
-  {
-    id: "run-9279",
-    agent: "Incident-Responder",
-    workflow: "DB Connection Alert",
-    status: "failed",
-    started_at: "1 hour ago",
-    duration: "3.2s",
-    risk: "medium"
-  },
-  {
-    id: "run-9278",
-    agent: "Metric-Summarizer",
-    workflow: "Weekly Finance Report",
-    status: "completed",
-    started_at: "3 hours ago",
-    duration: "8.9s",
-    risk: "low"
-  },
-];
+import api from "../../lib/api";
 
 const statusConfig = {
   completed: { icon: CheckCircle2, color: "text-green-500", label: "Completed" },
   paused: { icon: PauseCircle, color: "text-amber-500", label: "Awaiting Approval" },
   failed: { icon: XCircle, color: "text-red-500", label: "Failed" },
   running: { icon: Clock, color: "text-blue-500", label: "Running" },
+  pending: { icon: Clock, color: "text-gray-500", label: "Pending" },
+  cancelled: { icon: XCircle, color: "text-gray-500", label: "Cancelled" },
 };
 
 const riskConfig = {
   low: "bg-green-500/10 text-green-500 border-green-500/20",
   medium: "bg-amber-500/10 text-amber-500 border-amber-500/20",
   high: "bg-red-500/10 text-red-500 border-red-500/20",
+  critical: "bg-red-700/20 text-red-700 border-red-700/40",
 };
 
+interface Run {
+  id: string;
+  agent_id: string;
+  workflow_id: string | null;
+  status: string;
+  risk_level: string;
+  started_at: string;
+}
+
 export default function RunsPage() {
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRuns = async () => {
+      try {
+        const response = await api.get('/runs');
+        setRuns(response.data);
+      } catch (error) {
+        console.error("Failed to fetch runs", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRuns();
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -95,53 +85,55 @@ export default function RunsPage() {
         </button>
       </div>
 
-      <div className="overflow-hidden glass-panel">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-white/10 bg-white/5">
-              <th className="px-6 py-4 font-semibold">Run ID</th>
-              <th className="px-6 py-4 font-semibold">Agent</th>
-              <th className="px-6 py-4 font-semibold">Workflow</th>
-              <th className="px-6 py-4 font-semibold">Status</th>
-              <th className="px-6 py-4 font-semibold">Risk</th>
-              <th className="px-6 py-4 font-semibold">Started</th>
-              <th className="px-6 py-4 font-semibold"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/10">
-            {mockRuns.map((run) => {
-              const status = statusConfig[run.status as keyof typeof statusConfig];
-              return (
-                <tr key={run.id} className="hover:bg-white/5 transition-colors group">
-                  <td className="px-6 py-4 font-mono text-xs text-primary">{run.id}</td>
-                  <td className="px-6 py-4 font-medium">{run.agent}</td>
-                  <td className="px-6 py-4 text-muted-foreground">{run.workflow}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <status.icon className={`w-4 h-4 ${status.color}`} />
-                      <span>{status.label}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold border ${riskConfig[run.risk as keyof typeof riskConfig]}`}>
-                      {run.risk.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-muted-foreground text-xs">{run.started_at}</td>
-                  <td className="px-6 py-4 text-right">
-                    <Link 
-                      href={`/runs/${run.id}`}
-                      className="inline-flex items-center justify-center p-2 rounded-lg hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {loading ? (
+        <div className="text-center py-12 text-muted-foreground">Loading runs...</div>
+      ) : (
+        <div className="overflow-hidden glass-panel">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-white/10 bg-white/5">
+                <th className="px-6 py-4 font-semibold">Run ID</th>
+                <th className="px-6 py-4 font-semibold">Agent ID</th>
+                <th className="px-6 py-4 font-semibold">Status</th>
+                <th className="px-6 py-4 font-semibold">Risk</th>
+                <th className="px-6 py-4 font-semibold">Started</th>
+                <th className="px-6 py-4 font-semibold"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {runs.map((run) => {
+                const status = statusConfig[run.status as keyof typeof statusConfig] || statusConfig.pending;
+                return (
+                  <tr key={run.id} className="hover:bg-white/5 transition-colors group">
+                    <td className="px-6 py-4 font-mono text-xs text-primary">{run.id.substring(0,8)}...</td>
+                    <td className="px-6 py-4 font-medium text-xs">{run.agent_id.substring(0,8)}...</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <status.icon className={`w-4 h-4 ${status.color}`} />
+                        <span>{status.label}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded-md text-[10px] font-bold border ${riskConfig[run.risk_level as keyof typeof riskConfig] || riskConfig.low}`}>
+                        {run.risk_level.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-muted-foreground text-xs">{new Date(run.started_at).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-right">
+                      <Link 
+                        href={`/runs/${run.id}`}
+                        className="inline-flex items-center justify-center p-2 rounded-lg hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
