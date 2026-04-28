@@ -15,6 +15,12 @@ ORION provides a centralized "Control Plane" for AI operations (AgentOps). It fo
 2. **Governance**: Human-in-the-loop approval gates, risk scoring, and permission management.
 3. **Reliability**: Deterministic workflow orchestration with structured error handling.
 
+![ORION Dashboard](assets/dashboard.png)
+*Real-time observability and risk scoring dashboard.*
+
+![Trace Viewer](assets/trace_viewer.png)
+*Execution trace viewer with human-in-the-loop approval gate.*
+
 ---
 
 ## ✨ Feature Grid
