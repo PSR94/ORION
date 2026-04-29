@@ -32,6 +32,12 @@ const chartData = [
   { name: "Sun", runs: 550, errors: 5 },
 ];
 
+interface Run {
+  id: string;
+  status: string;
+  agent_id: string;
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState([
     { name: "Active Runs", value: "0", icon: Activity, color: "text-blue-500" },
@@ -48,12 +54,12 @@ export default function Dashboard() {
           api.get('/approvals')
         ]);
         
-        const runs = runsRes.data;
+        const runs = runsRes.data as Run[];
         const approvals = approvalsRes.data;
 
-        const activeRuns = runs.filter((r: any) => r.status === 'running').length;
-        const completedRuns = runs.filter((r: any) => r.status === 'completed').length;
-        const failedRuns = runs.filter((r: any) => r.status === 'failed' || r.status === 'cancelled').length;
+        const activeRuns = runs.filter((r: Run) => r.status === 'running').length;
+        const completedRuns = runs.filter((r: Run) => r.status === 'completed').length;
+        const failedRuns = runs.filter((r: Run) => r.status === 'failed' || r.status === 'cancelled').length;
         
         let successRate = 100;
         if (completedRuns + failedRuns > 0) {

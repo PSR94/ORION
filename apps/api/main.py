@@ -1,6 +1,8 @@
+import os
 import time
 import structlog
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from apps.api.routers import agents, workflows, runs, tools, approvals, health
 
@@ -20,13 +22,24 @@ app = FastAPI(
 )
 
 # CORS configuration
+cors_origins_env = os.getenv("CORS_ORIGINS", "*")
+allowed_origins = [origin.strip() for origin in cors_origins_env.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error("unhandled_exception", error=str(exc), path=request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. Our engineers have been notified."},
+    )
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):

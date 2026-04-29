@@ -26,6 +26,12 @@ interface Agent {
   runs: number;
   reliability: string;
 }
+interface AgentResponse {
+  id: string;
+  name: string;
+  role: string;
+  version: string;
+}
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -36,7 +42,7 @@ export default function AgentsPage() {
       try {
         const response = await api.get('/agents');
         // Map backend Agent model to frontend representation
-        const fetchedAgents = response.data.map((a: any) => ({
+        const fetchedAgents = response.data.map((a: AgentResponse) => ({
           id: a.id,
           name: a.name,
           role: a.role,

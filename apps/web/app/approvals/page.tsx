@@ -19,7 +19,7 @@ interface Approval {
   run_id: string;
   trace_id: string;
   requested_action: string;
-  context: any;
+  context: Record<string, unknown> | null;
   status: string;
   created_at: string;
 }

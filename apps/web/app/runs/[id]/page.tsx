@@ -21,10 +21,10 @@ interface Trace {
   id: string;
   step_type: string;
   step_name: string;
-  input: any;
-  output: any;
+  input: Record<string, unknown> | null;
+  output: Record<string, unknown> | string | null;
   latency_ms: number;
-  token_usage: any;
+  token_usage: Record<string, unknown> | null;
 }
 
 interface RunDetails {
