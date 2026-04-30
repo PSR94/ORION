@@ -78,6 +78,25 @@ export default function Dashboard() {
     };
     
     fetchDashboardData();
+
+    // Connect WebSocket for live telemetry
+    const wsUrl = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') || 'ws://localhost:8000/api/v1';
+    const ws = new WebSocket(`${wsUrl}/system/telemetry`);
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'telemetry_update') {
+          fetchDashboardData();
+        }
+      } catch (err) {
+        console.error("Failed to parse telemetry websocket message", err);
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
   }, []);
 
   return (

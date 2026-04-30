@@ -16,6 +16,7 @@ logger = structlog.get_logger()
 # In-memory pub/sub for WebSockets (for a single instance MVP)
 # Mapping of run_id -> List of async queues
 run_subscriptions: Dict[uuid.UUID, List[asyncio.Queue]] = {}
+telemetry_subscriptions: List[asyncio.Queue] = []
 
 def subscribe_to_run(run_id: uuid.UUID) -> asyncio.Queue:
     if run_id not in run_subscriptions:
@@ -29,6 +30,15 @@ def unsubscribe_from_run(run_id: uuid.UUID, queue: asyncio.Queue):
         run_subscriptions[run_id].remove(queue)
         if not run_subscriptions[run_id]:
             del run_subscriptions[run_id]
+
+def subscribe_to_telemetry() -> asyncio.Queue:
+    queue = asyncio.Queue()
+    telemetry_subscriptions.append(queue)
+    return queue
+
+def unsubscribe_from_telemetry(queue: asyncio.Queue):
+    if queue in telemetry_subscriptions:
+        telemetry_subscriptions.remove(queue)
 
 async def publish_trace_update(run_id: uuid.UUID, trace: ExecutionTrace):
     if run_id in run_subscriptions:
@@ -47,6 +57,11 @@ async def publish_trace_update(run_id: uuid.UUID, trace: ExecutionTrace):
         for q in run_subscriptions[run_id]:
             await q.put({"type": "trace_update", "data": trace_dict})
 
+async def publish_telemetry_update():
+    # Simple ping for dashboard to refetch data
+    for q in telemetry_subscriptions:
+        await q.put({"type": "telemetry_update"})
+
 class Orchestrator:
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -62,6 +77,7 @@ class Orchestrator:
         self.session.add(run)
         await self.session.commit()
         await self.session.refresh(run)
+        await publish_telemetry_update()
         
         # Start execution in background
         asyncio.create_task(self.execute_run(run.id))
@@ -104,12 +120,14 @@ class Orchestrator:
                 run.finished_at = datetime.utcnow()
                 session.add(run)
                 await session.commit()
+                await publish_telemetry_update()
 
             except Exception as e:
                 logger.error("run_failed", run_id=str(run_id), error=str(e))
                 run.status = RunStatus.FAILED
                 session.add(run)
                 await session.commit()
+                await publish_telemetry_update()
 
     async def _add_trace(self, session: AsyncSession, run_id: uuid.UUID, name: str, type: str, input: Dict[str, Any]):
         trace = ExecutionTrace(
@@ -159,6 +177,7 @@ class Orchestrator:
         )
         session.add(approval)
         await session.commit()
+        await publish_telemetry_update()
         logger.info("run_paused_for_approval", run_id=str(run.id), tool=tool_call["name"])
 
     async def resume_run(self, run_id: uuid.UUID, approved: bool):
@@ -172,12 +191,14 @@ class Orchestrator:
                 run.status = RunStatus.RUNNING
                 session.add(run)
                 await session.commit()
+                await publish_telemetry_update()
                 # Resume execution
                 asyncio.create_task(self.execute_run_from_pause(run_id))
             else:
                 run.status = RunStatus.CANCELLED
                 session.add(run)
                 await session.commit()
+                await publish_telemetry_update()
 
     async def execute_run_from_pause(self, run_id: uuid.UUID):
         # Implementation to resume from the last point
@@ -190,3 +211,4 @@ class Orchestrator:
             run.finished_at = datetime.utcnow()
             session.add(run)
             await session.commit()
+            await publish_telemetry_update()
