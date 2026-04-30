@@ -1,16 +1,51 @@
 import asyncio
 import uuid
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
+import json
 
 from apps.api.models.models import WorkflowRun, ExecutionTrace, RunStatus, RiskLevel, Approval
 from apps.api.services.mock_provider import mock_llm
 from apps.api.services.security import sanitizer
 
 logger = structlog.get_logger()
+
+# In-memory pub/sub for WebSockets (for a single instance MVP)
+# Mapping of run_id -> List of async queues
+run_subscriptions: Dict[uuid.UUID, List[asyncio.Queue]] = {}
+
+def subscribe_to_run(run_id: uuid.UUID) -> asyncio.Queue:
+    if run_id not in run_subscriptions:
+        run_subscriptions[run_id] = []
+    queue = asyncio.Queue()
+    run_subscriptions[run_id].append(queue)
+    return queue
+
+def unsubscribe_from_run(run_id: uuid.UUID, queue: asyncio.Queue):
+    if run_id in run_subscriptions and queue in run_subscriptions[run_id]:
+        run_subscriptions[run_id].remove(queue)
+        if not run_subscriptions[run_id]:
+            del run_subscriptions[run_id]
+
+async def publish_trace_update(run_id: uuid.UUID, trace: ExecutionTrace):
+    if run_id in run_subscriptions:
+        # We must serialize it safely
+        trace_dict = {
+            "id": str(trace.id),
+            "run_id": str(trace.run_id),
+            "step_name": trace.step_name,
+            "step_type": trace.step_type,
+            "input": trace.input,
+            "output": trace.output,
+            "timestamp": trace.timestamp.isoformat(),
+            "latency_ms": trace.latency_ms,
+            "token_usage": trace.token_usage
+        }
+        for q in run_subscriptions[run_id]:
+            await q.put({"type": "trace_update", "data": trace_dict})
 
 class Orchestrator:
     def __init__(self, session: AsyncSession):
@@ -87,6 +122,7 @@ class Orchestrator:
         session.add(trace)
         await session.commit()
         await session.refresh(trace)
+        await publish_trace_update(run_id, trace)
         return trace
 
     async def _update_last_trace(self, session: AsyncSession, run_id: uuid.UUID, output: Dict[str, Any]):
@@ -98,6 +134,7 @@ class Orchestrator:
             trace.output = sanitizer.sanitize(output)
             session.add(trace)
             await session.commit()
+            await publish_trace_update(run_id, trace)
 
     async def _execute_tool(self, session: AsyncSession, run_id: uuid.UUID, tool_call: Dict[str, Any]):
         await self._add_trace(session, run_id, tool_call["name"], "tool", input=tool_call["arguments"])

@@ -58,6 +58,39 @@ export default function TraceViewer() {
     if (id) fetchData();
   }, [id]);
 
+  useEffect(() => {
+    if (!id) return;
+    
+    // Convert http/https to ws/wss
+    const wsUrl = process.env.NEXT_PUBLIC_API_URL?.replace('http', 'ws') || 'ws://localhost:8000/api/v1';
+    const ws = new WebSocket(`${wsUrl}/runs/${id}/stream`);
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'trace_update') {
+          const newTrace = message.data as Trace;
+          setTraces((prevTraces) => {
+            const index = prevTraces.findIndex((t) => t.id === newTrace.id);
+            if (index >= 0) {
+              const updated = [...prevTraces];
+              updated[index] = newTrace;
+              return updated;
+            } else {
+              return [...prevTraces, newTrace];
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Failed to parse websocket message", err);
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [id]);
+
   if (loading) return <div className="p-8 text-center text-muted-foreground">Loading trace data...</div>;
   if (!run) return <div className="p-8 text-center text-red-500">Run not found.</div>;
 

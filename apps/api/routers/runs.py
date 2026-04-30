@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 from typing import List, Dict, Any
 from apps.api.core.database import get_session
 from apps.api.models.models import WorkflowRun, ExecutionTrace, Agent
-from apps.api.services.orchestrator import Orchestrator
+from apps.api.services.orchestrator import Orchestrator, subscribe_to_run, unsubscribe_from_run
 import uuid
+import json
 
 router = APIRouter()
 
@@ -36,3 +37,17 @@ async def get_run_traces(run_id: uuid.UUID, session: AsyncSession = Depends(get_
         select(ExecutionTrace).where(ExecutionTrace.run_id == run_id).order_by(ExecutionTrace.timestamp.asc())
     )
     return result.scalars().all()
+
+@router.websocket("/{run_id}/stream")
+async def stream_run_traces(websocket: WebSocket, run_id: uuid.UUID):
+    await websocket.accept()
+    queue = subscribe_to_run(run_id)
+    try:
+        while True:
+            trace_update = await queue.get()
+            await websocket.send_json(trace_update)
+    except WebSocketDisconnect:
+        unsubscribe_from_run(run_id, queue)
+    except Exception as e:
+        unsubscribe_from_run(run_id, queue)
+        await websocket.close()
